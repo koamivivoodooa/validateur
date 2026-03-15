@@ -46,8 +46,9 @@
 
         #video { 
             width: 100%; border-radius: 12px; 
-            background: #fff; border: 1px solid var(--border);
+            background: #000; border: 1px solid var(--border);
             box-shadow: 0 10px 40px rgba(0,0,0,0.03);
+            object-fit: cover;
         }
 
         .result { 
@@ -80,13 +81,13 @@
         .btn-main { background: var(--text); color: #fff; }
         .btn-soft { background: transparent; color: var(--muted); border: 1px solid var(--border); font-size: 9px; }
 
-        /* Historique & Flash */
         .controls { display: flex; gap: 10px; margin-top: 15px; }
+        
         #history { 
             margin-top: 30px; font-size: 9px; color: var(--muted); 
             text-transform: uppercase; width: 100%; border-top: 1px solid var(--border); padding-top: 20px;
         }
-        .history-item { display: flex; justify-content: space-between; padding: 5px 0; border-bottom: 0.5px solid #f0f0f0; }
+        .history-item { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 0.5px solid #f0f0f0; }
 
         .stats { margin-top: 30px; text-align: center; }
         .stats-label { font-size: 9px; color: var(--muted); letter-spacing: 2px; text-transform: uppercase; }
@@ -115,7 +116,7 @@
         </div>
 
         <div id="scan-interface" style="display:none;">
-            <video id="video"></video>
+            <video id="video" playsinline webkit-playsinline></video>
             
             <div class="controls">
                 <button class="btn btn-soft" id="torch-btn" onclick="toggleFlash()">Lampe : OFF</button>
@@ -140,7 +141,7 @@
 
     <script>
         let listeCodesValides = [];
-        let codesScannes = []; // Changé en tableau pour stocker l'objet {code, time}
+        let codesScannes = [];
         let videoTrack = null;
         let isFlashOn = false;
         const codeReader = new ZXing.BrowserMultiFormatReader();
@@ -159,6 +160,7 @@
         };
 
         function beep(freq, duration) {
+            if (audioCtx.state === 'suspended') audioCtx.resume();
             const osc = audioCtx.createOscillator();
             const gain = audioCtx.createGain();
             osc.connect(gain); gain.connect(audioCtx.destination);
@@ -177,8 +179,9 @@
             const file = input.files[0];
             const reader = new FileReader();
             reader.onload = (e) => {
-                const matches = e.target.result.match(/[A-Z0-9]+-[0-9]+-[0-9]+/g) || e.target.result.split(/[\r\n,;]+/);
-                if (matches) document.getElementById('codes-input').value = matches.map(c => c.trim()).filter(c => c.length > 0).join(', ');
+                const text = e.target.result;
+                const codes = text.split(/[\r\n,;]+/).map(c => c.trim()).filter(c => c.length > 0);
+                document.getElementById('codes-input').value = codes.join(', ');
             };
             reader.readAsText(file);
         }
@@ -199,18 +202,24 @@
         }
 
         async function startScanner() {
+            const constraints = { video: { facingMode: "environment" } };
             try {
-                const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
-                videoTrack = stream.getVideoTracks()[0];
-                
-                codeReader.decodeFromConstraints({ video: { facingMode: "environment" } }, 'video', (result) => {
+                codeReader.decodeFromConstraints(constraints, 'video', (result, err) => {
                     if (result) {
                         const code = result.text.trim();
-                        if (!document.getElementById('status').innerText.includes("En attente")) return;
+                        if (document.getElementById('status').innerText !== "En attente...") return;
                         verifierCode(code);
                     }
                 });
-            } catch (err) { console.error("Erreur caméra:", err); }
+
+                const stream = await navigator.mediaDevices.getUserMedia(constraints);
+                videoTrack = stream.getVideoTracks()[0];
+            } catch (err) {
+                console.error("Caméra arrière non trouvée, essai caméra par défaut.");
+                codeReader.decodeFromConstraints({ video: true }, 'video', (result) => {
+                    if (result) verifierCode(result.text.trim());
+                });
+            }
         }
 
         function toggleFlash() {
@@ -218,7 +227,7 @@
             isFlashOn = !isFlashOn;
             videoTrack.applyConstraints({ advanced: [{ torch: isFlashOn }] })
                 .then(() => { document.getElementById('torch-btn').innerText = `Lampe : ${isFlashOn ? 'ON' : 'OFF'}`; })
-                .catch(() => alert("Flash non supporté sur ce navigateur."));
+                .catch(() => alert("Lampe non supportée sur ce support."));
         }
 
         function verifierCode(code) {
@@ -261,12 +270,12 @@
         }
 
         function exportAttendance() {
-            let csvContent = "data:text/csv;charset=utf-8,Code,Heure de passage\n";
+            let csvContent = "data:text/csv;charset=utf-8,Code,Heure\n";
             codesScannes.forEach(s => { csvContent += `${s.code},${s.time}\n`; });
             const encodedUri = encodeURI(csvContent);
             const link = document.createElement("a");
             link.setAttribute("href", encodedUri);
-            link.setAttribute("download", `presence_artisan_${new Date().toLocaleDateString()}.csv`);
+            link.setAttribute("download", `presence_${new Date().toLocaleDateString()}.csv`);
             document.body.appendChild(link);
             link.click();
         }
@@ -279,7 +288,7 @@
         }
 
         function resetSession() {
-            if(confirm("Réinitialiser l'événement ? Toutes les données seront effacées.")) {
+            if(confirm("Réinitialiser ?")) {
                 localStorage.clear();
                 location.reload();
             }
