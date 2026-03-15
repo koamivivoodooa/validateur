@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Scanner Minimal - Artisan du Rêve</title>
+    
+    <script src="https://unpkg.com/@zxing/library@latest"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@200;400&display=swap" rel="stylesheet">
+    
+    <style>
+        :root { 
+            --gold: #C5A059; 
+            --soft-white: #F9F9F8;
+            --border: #EAEAEA;
+            --text: #2C2C2C;
+            --muted: #8E8E8E;
+        }
+
+        body { 
+            font-family: 'Inter', sans-serif; 
+            background: var(--soft-white); 
+            color: var(--text); 
+            margin: 0; 
+            padding: env(safe-area-inset-top) 25px 25px 25px;
+            display: flex; flex-direction: column; align-items: center;
+            overflow-x: hidden;
+        }
+
+        header { margin: 40px 0; text-align: center; }
+        header h1 { font-size: 11px; color: var(--gold); letter-spacing: 6px; text-transform: uppercase; margin: 0; font-weight: 200; }
+        header p { font-size: 8px; color: var(--muted); margin-top: 10px; letter-spacing: 2px; text-transform: uppercase; }
+
+        .container { width: 100%; max-width: 400px; position: relative; }
+
+        /* Onde Dorée */
+        #ripple {
+            position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%) scale(0);
+            width: 100px; height: 100px; background: radial-gradient(circle, var(--gold) 0%, transparent 70%);
+            border-radius: 50%; opacity: 0; pointer-events: none; z-index: 10;
+        }
+        @keyframes ripple-effect {
+            0% { transform: translate(-50%, -50%) scale(0); opacity: 0.6; }
+            100% { transform: translate(-50%, -50%) scale(4); opacity: 0; }
+        }
+
+        #video { 
+            width: 100%; border-radius: 12px; 
+            background: #fff; border: 1px solid var(--border);
+            box-shadow: 0 10px 40px rgba(0,0,0,0.03);
+        }
+
+        .result { 
+            margin-top: 20px; padding: 20px; border-radius: 12px;
+            font-size: 14px; font-weight: 400; transition: 0.4s;
+            border: 1px solid var(--border); background: #fff;
+            letter-spacing: 1px; text-transform: uppercase; text-align: center;
+        }
+
+        .valid { color: #2ecc71; border-color: #2ecc71; background: rgba(46, 204, 113, 0.02); }
+        .invalid { color: #e74c3c; border-color: #e74c3c; background: rgba(231, 76, 60, 0.02); }
+        .already { color: var(--gold); border-color: var(--gold); background: rgba(197, 160, 89, 0.02); }
+
+        .setup-panel { 
+            background: #fff; padding: 30px; border-radius: 15px; 
+            border: 1px solid var(--border); box-shadow: 0 5px 25px rgba(0,0,0,0.02);
+        }
+
+        textarea { 
+            width: 100%; height: 60px; background: var(--soft-white); color: var(--text); 
+            border: 1px solid var(--border); border-radius: 8px; padding: 12px; 
+            box-sizing: border-box; font-size: 12px; outline: none; resize: none;
+        }
+
+        .btn { 
+            width: 100%; padding: 14px; margin-top: 12px; font-size: 10px; 
+            font-weight: 400; cursor: pointer; text-transform: uppercase; letter-spacing: 3px;
+            border-radius: 8px; border: none; transition: 0.3s;
+        }
+        .btn-main { background: var(--text); color: #fff; }
+        .btn-soft { background: transparent; color: var(--muted); border: 1px solid var(--border); font-size: 9px; }
+
+        /* Historique & Flash */
+        .controls { display: flex; gap: 10px; margin-top: 15px; }
+        #history { 
+            margin-top: 30px; font-size: 9px; color: var(--muted); 
+            text-transform: uppercase; width: 100%; border-top: 1px solid var(--border); padding-top: 20px;
+        }
+        .history-item { display: flex; justify-content: space-between; padding: 5px 0; border-bottom: 0.5px solid #f0f0f0; }
+
+        .stats { margin-top: 30px; text-align: center; }
+        .stats-label { font-size: 9px; color: var(--muted); letter-spacing: 2px; text-transform: uppercase; }
+        .progress-bar { width: 100px; height: 1px; background: var(--border); margin: 15px auto; overflow: hidden; }
+        #progress-fill { width: 0%; height: 100%; background: var(--gold); transition: 1s cubic-bezier(0.4, 0, 0.2, 1); }
+
+        #btn-reset { margin-top: 40px; font-size: 8px; opacity: 0.4; background: none; border: none; cursor: pointer; text-transform: uppercase; letter-spacing: 1px; color: var(--text); width: 100%; }
+    </style>
+</head>
+<body>
+
+    <div id="ripple"></div>
+
+    <header>
+        <h1>Artisan du Rêve</h1>
+        <p>Scanner d'Accès</p>
+    </header>
+    
+    <div class="container">
+        <div id="setup-zone" class="setup-panel">
+            <input type="file" id="csv-file" accept=".csv" style="display:none" onchange="importCSV(this)">
+            <button class="btn btn-soft" onclick="document.getElementById('csv-file').click()">Charger CSV</button>
+            <div style="height: 15px;"></div>
+            <textarea id="codes-input" placeholder="OU COLLER LES CODES ICI..."></textarea>
+            <button class="btn btn-main" onclick="initList()">Démarrer l'événement</button>
+        </div>
+
+        <div id="scan-interface" style="display:none;">
+            <video id="video"></video>
+            
+            <div class="controls">
+                <button class="btn btn-soft" id="torch-btn" onclick="toggleFlash()">Lampe : OFF</button>
+                <button class="btn btn-soft" onclick="exportAttendance()">Exporter CSV</button>
+            </div>
+
+            <div id="status" class="result">En attente...</div>
+            
+            <div class="stats">
+                <div class="stats-label" id="stats">0 / 0 Présents</div>
+                <div class="progress-bar"><div id="progress-fill"></div></div>
+            </div>
+
+            <div id="history">
+                <div style="margin-bottom: 10px; letter-spacing: 1px;">Derniers scans</div>
+                <div id="history-list"></div>
+            </div>
+
+            <button id="btn-reset" onclick="resetSession()">Réinitialiser la session</button>
+        </div>
+    </div>
+
+    <script>
+        let listeCodesValides = [];
+        let codesScannes = []; // Changé en tableau pour stocker l'objet {code, time}
+        let videoTrack = null;
+        let isFlashOn = false;
+        const codeReader = new ZXing.BrowserMultiFormatReader();
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+        window.onload = () => {
+            const savedScans = localStorage.getItem('codesScannes');
+            const savedList = localStorage.getItem('listeValide');
+            if(savedScans && savedList) {
+                listeCodesValides = JSON.parse(savedList);
+                codesScannes = JSON.parse(savedScans);
+                showInterface();
+                startScanner();
+                updateHistoryUI();
+            }
+        };
+
+        function beep(freq, duration) {
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.connect(gain); gain.connect(audioCtx.destination);
+            osc.frequency.value = freq; gain.gain.value = 0.05;
+            osc.start(); setTimeout(() => osc.stop(), duration);
+        }
+
+        function triggerRipple() {
+            const ripple = document.getElementById('ripple');
+            ripple.style.animation = 'none';
+            ripple.offsetHeight; 
+            ripple.style.animation = 'ripple-effect 0.8s ease-out';
+        }
+
+        function importCSV(input) {
+            const file = input.files[0];
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const matches = e.target.result.match(/[A-Z0-9]+-[0-9]+-[0-9]+/g) || e.target.result.split(/[\r\n,;]+/);
+                if (matches) document.getElementById('codes-input').value = matches.map(c => c.trim()).filter(c => c.length > 0).join(', ');
+            };
+            reader.readAsText(file);
+        }
+
+        function initList() {
+            const input = document.getElementById('codes-input').value;
+            if(!input) return;
+            listeCodesValides = input.split(/[\s,;]+/).map(c => c.trim()).filter(c => c.length > 0);
+            localStorage.setItem('listeValide', JSON.stringify(listeCodesValides));
+            showInterface();
+            startScanner();
+        }
+
+        function showInterface() {
+            document.getElementById('setup-zone').style.display = 'none';
+            document.getElementById('scan-interface').style.display = 'block';
+            updateStats();
+        }
+
+        async function startScanner() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+                videoTrack = stream.getVideoTracks()[0];
+                
+                codeReader.decodeFromConstraints({ video: { facingMode: "environment" } }, 'video', (result) => {
+                    if (result) {
+                        const code = result.text.trim();
+                        if (!document.getElementById('status').innerText.includes("En attente")) return;
+                        verifierCode(code);
+                    }
+                });
+            } catch (err) { console.error("Erreur caméra:", err); }
+        }
+
+        function toggleFlash() {
+            if (!videoTrack) return;
+            isFlashOn = !isFlashOn;
+            videoTrack.applyConstraints({ advanced: [{ torch: isFlashOn }] })
+                .then(() => { document.getElementById('torch-btn').innerText = `Lampe : ${isFlashOn ? 'ON' : 'OFF'}`; })
+                .catch(() => alert("Flash non supporté sur ce navigateur."));
+        }
+
+        function verifierCode(code) {
+            const statusDiv = document.getElementById('status');
+            const dejaPresent = codesScannes.find(s => s.code === code);
+
+            if (dejaPresent) {
+                statusDiv.className = "result already";
+                statusDiv.innerText = "Déjà scanné";
+                beep(300, 200);
+            } else if (listeCodesValides.includes(code)) {
+                statusDiv.className = "result valid";
+                statusDiv.innerText = "Accès Valide";
+                triggerRipple();
+                
+                const log = { code: code, time: new Date().toLocaleTimeString('fr-FR', {hour: '2-digit', minute:'2-digit'}) };
+                codesScannes.push(log);
+                localStorage.setItem('codesScannes', JSON.stringify(codesScannes));
+                
+                beep(880, 100);
+                updateHistoryUI();
+            } else {
+                statusDiv.className = "result invalid";
+                statusDiv.innerText = "Code Inconnu";
+                beep(150, 400);
+            }
+            updateStats();
+            setTimeout(() => { statusDiv.className = "result"; statusDiv.innerText = "En attente..."; }, 2500);
+        }
+
+        function updateHistoryUI() {
+            const container = document.getElementById('history-list');
+            const lastFive = [...codesScannes].reverse().slice(0, 5);
+            container.innerHTML = lastFive.map(s => `
+                <div class="history-item">
+                    <span>${s.code}</span>
+                    <span style="color:var(--gold)">${s.time}</span>
+                </div>
+            `).join('');
+        }
+
+        function exportAttendance() {
+            let csvContent = "data:text/csv;charset=utf-8,Code,Heure de passage\n";
+            codesScannes.forEach(s => { csvContent += `${s.code},${s.time}\n`; });
+            const encodedUri = encodeURI(csvContent);
+            const link = document.createElement("a");
+            link.setAttribute("href", encodedUri);
+            link.setAttribute("download", `presence_artisan_${new Date().toLocaleDateString()}.csv`);
+            document.body.appendChild(link);
+            link.click();
+        }
+
+        function updateStats() {
+            const count = codesScannes.length;
+            const total = listeCodesValides.length;
+            document.getElementById('stats').innerText = `${count} / ${total} Présents`;
+            document.getElementById('progress-fill').style.width = (total > 0 ? (count / total) * 100 : 0) + "%";
+        }
+
+        function resetSession() {
+            if(confirm("Réinitialiser l'événement ? Toutes les données seront effacées.")) {
+                localStorage.clear();
+                location.reload();
+            }
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,20 @@
+{
+  "name": "Scanner RC7",
+  "short_name": "ScannerRC7",
+  "start_url": "index.html",
+  "display": "standalone",
+  "background_color": "#000000",
+  "theme_color": "#3498db",
+  "icons": [
+    {
+      "src": "https://via.placeholder.com/192/3498db/ffffff?text=RC",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "https://via.placeholder.com/512/3498db/ffffff?text=RC",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
