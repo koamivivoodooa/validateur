@@ -33,7 +33,6 @@
 
         .container { width: 100%; max-width: 400px; position: relative; }
 
-        /* Onde Dorée */
         #ripple {
             position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%) scale(0);
             width: 100px; height: 100px; background: radial-gradient(circle, var(--gold) 0%, transparent 70%);
@@ -44,7 +43,6 @@
             100% { transform: translate(-50%, -50%) scale(4); opacity: 0; }
         }
 
-        /* Viseur du Scanner */
         .video-wrapper {
             position: relative;
             width: 100%;
@@ -71,9 +69,10 @@
             z-index: 2;
         }
 
+        /* Viseur agrandi pour les codes-barres 1D */
         .scanner-frame {
-            width: 70%;
-            height: 40%;
+            width: 85%;
+            height: 30%;
             border: 1px solid rgba(197, 160, 89, 0.4);
             border-radius: 8px;
             position: relative;
@@ -91,8 +90,8 @@
         }
 
         @keyframes scan-move {
-            0%, 100% { top: 5%; opacity: 0.2; }
-            50% { top: 95%; opacity: 1; }
+            0%, 100% { top: 10%; opacity: 0.2; }
+            50% { top: 90%; opacity: 1; }
         }
 
         .result { 
@@ -195,6 +194,8 @@
         let codesScannes = [];
         let videoTrack = null;
         let isFlashOn = false;
+        
+        // Configuration ZXing pour lire tous les formats (1D et 2D)
         const codeReader = new ZXing.BrowserMultiFormatReader();
         const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 
@@ -253,11 +254,21 @@
         }
 
         async function startScanner() {
-            const constraints = { video: { facingMode: "environment" } };
+            // Paramètres vidéo optimisés pour la mise au point sur mobile
+            const constraints = { 
+                video: { 
+                    facingMode: "environment",
+                    width: { ideal: 1280 },
+                    height: { ideal: 720 }
+                } 
+            };
+
             try {
+                // decodeFromConstraints gère automatiquement les formats 1D et 2D
                 codeReader.decodeFromConstraints(constraints, 'video', (result, err) => {
                     if (result) {
                         const code = result.text.trim();
+                        // On ignore si un message est déjà affiché
                         if (document.getElementById('status').innerText !== "En attente...") return;
                         verifierCode(code);
                     }
@@ -266,7 +277,7 @@
                 const stream = await navigator.mediaDevices.getUserMedia(constraints);
                 videoTrack = stream.getVideoTracks()[0];
             } catch (err) {
-                console.error("Erreur caméra.");
+                console.error("Erreur caméra : ", err);
             }
         }
 
