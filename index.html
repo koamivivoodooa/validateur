@@ -44,11 +44,55 @@
             100% { transform: translate(-50%, -50%) scale(4); opacity: 0; }
         }
 
-        #video { 
-            width: 100%; border-radius: 12px; 
-            background: #000; border: 1px solid var(--border);
+        /* Viseur du Scanner */
+        .video-wrapper {
+            position: relative;
+            width: 100%;
+            border-radius: 12px;
+            overflow: hidden;
+            background: #000;
+            border: 1px solid var(--border);
             box-shadow: 0 10px 40px rgba(0,0,0,0.03);
+            line-height: 0;
+        }
+
+        #video { 
+            width: 100%; 
             object-fit: cover;
+        }
+
+        .scanner-overlay {
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            pointer-events: none;
+            z-index: 2;
+        }
+
+        .scanner-frame {
+            width: 70%;
+            height: 40%;
+            border: 1px solid rgba(197, 160, 89, 0.4);
+            border-radius: 8px;
+            position: relative;
+            box-shadow: 0 0 0 1000px rgba(0, 0, 0, 0.3);
+        }
+
+        .scanner-line {
+            position: absolute;
+            width: 100%;
+            height: 2px;
+            background: var(--gold);
+            box-shadow: 0 0 10px var(--gold);
+            top: 0;
+            animation: scan-move 2.5s infinite ease-in-out;
+        }
+
+        @keyframes scan-move {
+            0%, 100% { top: 5%; opacity: 0.2; }
+            50% { top: 95%; opacity: 1; }
         }
 
         .result { 
@@ -116,7 +160,14 @@
         </div>
 
         <div id="scan-interface" style="display:none;">
-            <video id="video" playsinline webkit-playsinline></video>
+            <div class="video-wrapper">
+                <video id="video" playsinline webkit-playsinline></video>
+                <div class="scanner-overlay">
+                    <div class="scanner-frame">
+                        <div class="scanner-line"></div>
+                    </div>
+                </div>
+            </div>
             
             <div class="controls">
                 <button class="btn btn-soft" id="torch-btn" onclick="toggleFlash()">Lampe : OFF</button>
@@ -215,10 +266,7 @@
                 const stream = await navigator.mediaDevices.getUserMedia(constraints);
                 videoTrack = stream.getVideoTracks()[0];
             } catch (err) {
-                console.error("Caméra arrière non trouvée, essai caméra par défaut.");
-                codeReader.decodeFromConstraints({ video: true }, 'video', (result) => {
-                    if (result) verifierCode(result.text.trim());
-                });
+                console.error("Erreur caméra.");
             }
         }
 
@@ -227,7 +275,7 @@
             isFlashOn = !isFlashOn;
             videoTrack.applyConstraints({ advanced: [{ torch: isFlashOn }] })
                 .then(() => { document.getElementById('torch-btn').innerText = `Lampe : ${isFlashOn ? 'ON' : 'OFF'}`; })
-                .catch(() => alert("Lampe non supportée sur ce support."));
+                .catch(() => alert("Lampe non supportée."));
         }
 
         function verifierCode(code) {
