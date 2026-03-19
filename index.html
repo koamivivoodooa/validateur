@@ -70,8 +70,8 @@
         }
 
         .scanner-frame {
-            width: 85%;
-            height: 35%;
+            width: 80%;
+            height: 40%;
             border: 1px solid rgba(197, 160, 89, 0.4);
             border-radius: 8px;
             position: relative;
@@ -159,7 +159,7 @@
 
         <div id="scan-interface" style="display:none;">
             <div class="video-wrapper">
-                <video id="video" playsinline webkit-playsinline></video>
+                <video id="video"></video>
                 <div class="scanner-overlay">
                     <div class="scanner-frame">
                         <div class="scanner-line"></div>
@@ -194,7 +194,19 @@
         let videoTrack = null;
         let isFlashOn = false;
         
-        const codeReader = new ZXing.BrowserMultiFormatReader();
+        // Optimisation des formats et de la précision
+        const hints = new Map();
+        const formats = [
+            ZXing.BarcodeFormat.QR_CODE, 
+            ZXing.BarcodeFormat.CODE_128, 
+            ZXing.BarcodeFormat.EAN_13, 
+            ZXing.BarcodeFormat.EAN_8,
+            ZXing.BarcodeFormat.ITF // Utile pour certains tickets imprimés
+        ];
+        hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, formats);
+        hints.set(ZXing.DecodeHintType.TRY_HARDER, true);
+
+        const codeReader = new ZXing.BrowserMultiFormatReader(hints);
         const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 
         window.onload = () => {
@@ -253,33 +265,33 @@
 
         async function startScanner() {
             try {
-                const videoDevices = await codeReader.listVideoInputDevices();
-                const selectedDeviceId = videoDevices[0].deviceId;
-
-                // Contraintes optimisées pour codes 1D et 2D
                 const constraints = {
-                    video: {
+                    video: { 
                         facingMode: "environment",
-                        width: { ideal: 1920 },
-                        height: { ideal: 1080 },
-                        focusMode: "continuous"
+                        width: { ideal: 1280 },
+                        height: { ideal: 720 }
                     }
                 };
 
-                // Lecture en continu via decodeFromVideoDevice (plus stable sur mobile)
-                codeReader.decodeFromVideoDevice(undefined, 'video', (result, err) => {
+                // Utilisation de decodeFromConstraints pour une meilleure gestion mobile
+                codeReader.decodeFromConstraints(constraints, 'video', (result, err) => {
                     if (result) {
                         const code = result.text.trim();
-                        if (document.getElementById('status').innerText === "En attente...") {
+                        const statusDiv = document.getElementById('status');
+                        // On ne traite que si on est en attente (évite les scans multiples en une seconde)
+                        if (statusDiv.innerText === "En attente...") {
                             verifierCode(code);
                         }
                     }
                 });
 
+                // Récupération manuelle du track pour la lampe
                 const stream = await navigator.mediaDevices.getUserMedia(constraints);
                 videoTrack = stream.getVideoTracks()[0];
+                
             } catch (err) {
                 console.error("Erreur caméra : ", err);
+                alert("Assurez-vous d'être en HTTPS et d'avoir autorisé la caméra.");
             }
         }
 
@@ -287,8 +299,10 @@
             if (!videoTrack) return;
             isFlashOn = !isFlashOn;
             videoTrack.applyConstraints({ advanced: [{ torch: isFlashOn }] })
-                .then(() => { document.getElementById('torch-btn').innerText = `Lampe : ${isFlashOn ? 'ON' : 'OFF'}`; })
-                .catch(() => alert("Lampe non supportée sur cet appareil."));
+                .then(() => { 
+                    document.getElementById('torch-btn').innerText = `Lampe : ${isFlashOn ? 'ON' : 'OFF'}`; 
+                })
+                .catch(() => alert("Lampe non disponible sur cet appareil."));
         }
 
         function verifierCode(code) {
@@ -320,7 +334,7 @@
             setTimeout(() => { 
                 statusDiv.className = "result"; 
                 statusDiv.innerText = "En attente..."; 
-            }, 2500);
+            }, 3000);
         }
 
         function updateHistoryUI() {
@@ -340,7 +354,7 @@
             const encodedUri = encodeURI(csvContent);
             const link = document.createElement("a");
             link.setAttribute("href", encodedUri);
-            link.setAttribute("download", `presence_${new Date().toLocaleDateString()}.csv`);
+            link.setAttribute("download", `presence.csv`);
             document.body.appendChild(link);
             link.click();
         }
@@ -353,7 +367,7 @@
         }
 
         function resetSession() {
-            if(confirm("Réinitialiser toutes les données de l'événement ?")) {
+            if(confirm("Réinitialiser toutes les données ?")) {
                 localStorage.clear();
                 location.reload();
             }
