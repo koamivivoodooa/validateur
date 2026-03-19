@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Scanner Minimal - Artisan du Rêve</title>
+    <title>Scanner RC7 - Artisan du Rêve</title>
     
     <script src="https://unpkg.com/@zxing/library@latest"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@200;400&display=swap" rel="stylesheet">
@@ -145,7 +145,7 @@
 
     <header>
         <h1>Artisan du Rêve</h1>
-        <p>Scanner d'Accès</p>
+        <p>Scanner d'Accès • RC7</p>
     </header>
     
     <div class="container">
@@ -193,21 +193,29 @@
         let codesScannes = [];
         let videoTrack = null;
         let isFlashOn = false;
+        let isProcessing = false; // Flag pour éviter les doubles scans
         
-        // Optimisation des formats et de la précision
         const hints = new Map();
-        const formats = [
+        hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, [
             ZXing.BarcodeFormat.QR_CODE, 
             ZXing.BarcodeFormat.CODE_128, 
             ZXing.BarcodeFormat.EAN_13, 
             ZXing.BarcodeFormat.EAN_8,
-            ZXing.BarcodeFormat.ITF // Utile pour certains tickets imprimés
-        ];
-        hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, formats);
+            ZXing.BarcodeFormat.ITF
+        ]);
         hints.set(ZXing.DecodeHintType.TRY_HARDER, true);
 
         const codeReader = new ZXing.BrowserMultiFormatReader(hints);
         const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+        // Enregistrement du Service Worker pour le mode offline
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('sw.js')
+                    .then(reg => console.log('Scanner prêt en mode hors-ligne.'))
+                    .catch(err => console.error('Erreur SW:', err));
+            });
+        }
 
         window.onload = () => {
             const savedScans = localStorage.getItem('codesScannes');
@@ -273,25 +281,18 @@
                     }
                 };
 
-                // Utilisation de decodeFromConstraints pour une meilleure gestion mobile
                 codeReader.decodeFromConstraints(constraints, 'video', (result, err) => {
-                    if (result) {
-                        const code = result.text.trim();
-                        const statusDiv = document.getElementById('status');
-                        // On ne traite que si on est en attente (évite les scans multiples en une seconde)
-                        if (statusDiv.innerText === "En attente...") {
-                            verifierCode(code);
-                        }
+                    if (result && !isProcessing) { // Vérification du verrouillage
+                        verifierCode(result.text.trim());
                     }
                 });
 
-                // Récupération manuelle du track pour la lampe
                 const stream = await navigator.mediaDevices.getUserMedia(constraints);
                 videoTrack = stream.getVideoTracks()[0];
                 
             } catch (err) {
                 console.error("Erreur caméra : ", err);
-                alert("Assurez-vous d'être en HTTPS et d'avoir autorisé la caméra.");
+                alert("Accès caméra requis.");
             }
         }
 
@@ -302,10 +303,11 @@
                 .then(() => { 
                     document.getElementById('torch-btn').innerText = `Lampe : ${isFlashOn ? 'ON' : 'OFF'}`; 
                 })
-                .catch(() => alert("Lampe non disponible sur cet appareil."));
+                .catch(() => alert("Lampe non supportée."));
         }
 
         function verifierCode(code) {
+            isProcessing = true; // Verrouille le scanner
             const statusDiv = document.getElementById('status');
             const dejaPresent = codesScannes.find(s => s.code === code);
 
@@ -330,11 +332,15 @@
                 statusDiv.innerText = "Code Inconnu";
                 beep(150, 400);
             }
+            
             updateStats();
+            
+            // Réinitialisation plus rapide (1.8s) pour fluidifier le passage
             setTimeout(() => { 
                 statusDiv.className = "result"; 
                 statusDiv.innerText = "En attente..."; 
-            }, 3000);
+                isProcessing = false; // Déverrouille le scanner
+            }, 1800);
         }
 
         function updateHistoryUI() {
@@ -354,7 +360,7 @@
             const encodedUri = encodeURI(csvContent);
             const link = document.createElement("a");
             link.setAttribute("href", encodedUri);
-            link.setAttribute("download", `presence.csv`);
+            link.setAttribute("download", `presence_RC7.csv`);
             document.body.appendChild(link);
             link.click();
         }
